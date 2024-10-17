@@ -1,3 +1,8 @@
+# Custom ignores
+anki-wakatime.zip
+
+# -- Python .gitignore template -- #
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
