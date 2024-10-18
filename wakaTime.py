@@ -8,29 +8,36 @@ Website:     https://github.com/ProfessionalGriefer/anki-wakatime
 ==========================================================="""
 
 
-__version__ = '11.1.0'
+__version__ = '0.1'
 
+from enum import Enum
 import json
-import os
 import platform
 import re
 import shutil
-import ssl
 import subprocess
-import sys
 import time
 import threading
-import traceback
-import webbrowser
 from subprocess import STDOUT, PIPE
 from zipfile import ZipFile
 from pathlib import Path
 
 import queue
 
-from configparser import ConfigParser, Error as ConfigParserError
+from configparser import ConfigParser
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
+
+# Imports for Anki
+# import the main window object (mw) from aqt
+from aqt import mw
+# import the "show info" tool from utils.py
+from aqt.utils import showInfo, qconnect
+# import everything from the Qt GUI library
+from aqt.qt import *
+
+config = mw.addonManager.getConfig(__name__)
+
 
 is_win = platform.system() == 'Windows'
 
@@ -65,28 +72,32 @@ LAST_HEARTBEAT = {
     'file': None,
     'is_write': False,
 }
-LAST_HEARTBEAT_SENT_AT = 0
-LAST_FETCH_TODAY_CODING_TIME = 0
-FETCH_TODAY_DEBOUNCE_COUNTER = 0
-FETCH_TODAY_DEBOUNCE_SECONDS = 60
-LATEST_CLI_VERSION = None
-WAKATIME_CLI_LOCATION = None
-HEARTBEATS = queue.Queue()
-HEARTBEAT_FREQUENCY = 2  # minutes between logging heartbeat when editing same file
-SEND_BUFFER_SECONDS = 30  # seconds between sending buffered heartbeats to API
+
+LAST_HEARTBEAT_SENT_AT          = 0
+LAST_FETCH_TODAY_CODING_TIME    = 0
+FETCH_TODAY_DEBOUNCE_COUNTER    = 0
+FETCH_TODAY_DEBOUNCE_SECONDS    = 60
+LATEST_CLI_VERSION              = None
+WAKATIME_CLI_LOCATION: Path | None      = None
+HEARTBEATS                      = queue.Queue()
+HEARTBEAT_FREQUENCY             = 2     # minutes between logging heartbeat when editing same file
+SEND_BUFFER_SECONDS             = 30    # seconds between sending buffered heartbeats to API
 
 
 # Log Levels
-DEBUG = 'DEBUG'
-INFO = 'INFO'
-WARNING = 'WARNING'
-ERROR = 'ERROR'
+class LogLevel(Enum):
+    DEBUG   = 'DEBUG'
+    INFO    = 'INFO'
+    WARNING = 'WARNING'
+    ERROR   = 'ERROR'
 
-
-def parseConfigFile(configFile):
-    """Returns a configparser.SafeConfigParser instance with configs
+def parseConfigFile(configFile: Path):
+    """
+    Returns a configparser.SafeConfigParser instance with configs
     read from the config file. Default location of the config file is
     at ~/.wakatime.cfg.
+    :param configFile: Path
+    :return:
     """
 
     kwargs = {'strict': False}
@@ -96,12 +107,31 @@ def parseConfigFile(configFile):
             try:
                 configs.read_file(fh)
                 return configs
-            except ConfigParserError:
-                log(ERROR, traceback.format_exc())
+            except:
+                log(LogLevel.ERROR, traceback.format_exc())
                 return None
     except IOError:
-        log(DEBUG, "Error: Could not read from config file {0}\n".format(configFile))
+        log(LogLevel.DEBUG, "Error: Could not read from config file {0}\n".format(configFile))
         return configs
+
+def prompt_api_key() -> str | None:
+    """
+    Used within the ApiKey class to get the API key from the user if none has been found in the config
+    :return: API key
+    """
+    key, ok = QInputDialog.getText(mw, "Enter the WakaTime API Key", "waka_XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX")
+
+    if ok and key:
+        # Save the text to addon's config
+        config["wakaTime-api-key"] = key
+        mw.addonManager.writeConfig(__name__, config)
+
+        # Optionally show a message confirming it was saved
+        showInfo("Your new API key has been saved")
+
+        return key
+
+    return None
 
 
 class ApiKey(object):
@@ -111,60 +141,17 @@ class ApiKey(object):
         if self._key:
             return self._key
 
-        key = SETTINGS.get('api_key')
+        # Read from the Anki Addon Config
+        key: str | None = config['wakaTime-api-key']
         if key:
             self._key = key
             return self._key
 
-        configs = None
-        try:
-            configs = parseConfigFile(CONFIG_FILE)
-            if configs:
-                if configs.has_option('settings', 'api_key'):
-                    key = configs.get('settings', 'api_key')
-                    if key:
-                        self._key = key
-                        return self._key
-        except:
-            pass
-
-        key = self.api_key_from_vault_cmd(configs)
+        # Else prompt for the API Key
+        key = prompt_api_key()
         if key:
             self._key = key
-            return self._key
-
-        return self._key
-
-    def api_key_from_vault_cmd(self, configs):
-        vault_cmd = SETTINGS.get('api_key_vault_cmd')
-        if not vault_cmd and configs:
-            try:
-                if configs.has_option('settings', 'api_key_vault_cmd'):
-                    vault_cmd = configs.get('settings', 'api_key_vault_cmd')
-            except:
-                pass
-
-        if not vault_cmd or not vault_cmd.strip():
-            return None
-
-        try:
-            process = Popen(vault_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-            stdout, stderr = process.communicate()
-            retcode = process.poll()
-            if retcode:
-                log(ERROR, 'Vault command error ({retcode}): {stderr}'.format(retcode=retcode, stderr=u(stderr)))
-                return None
-            return stdout.strip() or None
-        except:
-            log(ERROR, traceback.format_exc())
-
-        return None
-
-    def write(self, key):
-        global SETTINGS
-        self._key = key
-        SETTINGS.set('api_key', str(key))
-        sublime.save_settings(SETTINGS_FILE)
+            return key
 
 
 APIKEY = ApiKey()
@@ -173,17 +160,24 @@ APIKEY = ApiKey()
 def set_timeout(callback, seconds):
     """Runs the callback after the given seconds delay.
 
-    If this is Sublime Text 3, runs the callback on an alternate thread. If this
-    is Sublime Text 2, runs the callback in the main thread.
+    If this is Sublime Text 3, runs the callback on an alternate thread.
     """
 
     milliseconds = int(seconds * 1000)
     sublime.set_timeout_async(callback, milliseconds)
 
 
-def log(lvl, message, *args, **kwargs):
+def log(lvl: LogLevel, message, *args, **kwargs):
+    """
+    Logging messages
+    :param lvl:
+    :param message:
+    :param args:
+    :param kwargs:
+    :return:
+    """
     try:
-        if lvl == DEBUG and not SETTINGS.get('debug'):
+        if lvl == LogLevel.DEBUG and not SETTINGS.get('debug'):
             return
         msg = message
         if len(args) > 0:
@@ -194,101 +188,6 @@ def log(lvl, message, *args, **kwargs):
     except RuntimeError:
         set_timeout(lambda: log(lvl, message, *args, **kwargs), 0)
 
-
-def update_status_bar(status=None, debounced=False, msg=None):
-    """Updates the status bar."""
-    global LAST_FETCH_TODAY_CODING_TIME, FETCH_TODAY_DEBOUNCE_COUNTER
-
-    try:
-        if not msg and SETTINGS.get('status_bar_message') is not False and SETTINGS.get('status_bar_enabled'):
-            if SETTINGS.get('status_bar_coding_activity') and status == 'OK':
-                if debounced:
-                    FETCH_TODAY_DEBOUNCE_COUNTER -= 1
-                if debounced or not LAST_FETCH_TODAY_CODING_TIME:
-                    now = int(time.time())
-                    if LAST_FETCH_TODAY_CODING_TIME and (FETCH_TODAY_DEBOUNCE_COUNTER > 0 or LAST_FETCH_TODAY_CODING_TIME > now - FETCH_TODAY_DEBOUNCE_SECONDS):
-                        return
-                    LAST_FETCH_TODAY_CODING_TIME = now
-                    FetchStatusBarCodingTime().start()
-                    return
-                else:
-                    FETCH_TODAY_DEBOUNCE_COUNTER += 1
-                    set_timeout(lambda: update_status_bar(status, debounced=True), FETCH_TODAY_DEBOUNCE_SECONDS)
-                    return
-            else:
-                msg = 'WakaTime: {status}'.format(status=status)
-
-        if msg:
-            active_window = sublime.active_window()
-            if active_window:
-                for view in active_window.views():
-                    view.set_status('wakatime', msg)
-
-    except RuntimeError:
-        set_timeout(lambda: update_status_bar(status=status, debounced=debounced, msg=msg), 0)
-
-
-class FetchStatusBarCodingTime(threading.Thread):
-
-    def __init__(self):
-        threading.Thread.__init__(self)
-
-        self.debug = SETTINGS.get('debug')
-        self.api_key = APIKEY.read() or ''
-        self.proxy = SETTINGS.get('proxy')
-
-    def run(self):
-        if not self.api_key:
-            log(DEBUG, 'Missing WakaTime API key.')
-            return
-        if not isCliInstalled():
-            return
-
-        ua = 'sublime/%d sublime-wakatime/%s' % (ST_VERSION, __version__)
-
-        cmd = [
-            getCliLocation(),
-            '--today',
-            '--key', str(bytes.decode(self.api_key.encode('utf8'))),
-            '--plugin', ua,
-        ]
-        if self.debug:
-            cmd.append('--verbose')
-        if self.proxy:
-            cmd.extend(['--proxy', self.proxy])
-
-        log(DEBUG, ' '.join(obfuscate_apikey(cmd)))
-        try:
-            process = Popen(cmd, stdout=PIPE, stderr=STDOUT)
-            output, err = process.communicate()
-            if output:
-                output = output.strip()
-            retcode = process.poll()
-            if not retcode and output:
-                msg = 'Today: {output}'.format(output=output)
-                update_status_bar(msg=msg)
-            else:
-                log(DEBUG, 'wakatime-core today exited with status: {0}'.format(retcode))
-                if output:
-                    log(DEBUG, 'wakatime-core today output: {0}'.format(output))
-        except:
-            pass
-
-
-def prompt_api_key():
-    if APIKEY.read():
-        return True
-
-    window = sublime.active_window()
-    if window:
-        def got_key(text):
-            if text:
-                APIKEY.write(text)
-        window.show_input_panel('[WakaTime] Enter your wakatime.com api key:', '', got_key, None, None)
-        return True
-    else:
-        log(ERROR, 'Could not prompt for api key because no window found.')
-        return False
 
 
 def obfuscate_apikey(command_list):
@@ -339,15 +238,6 @@ def find_project_from_folders(folders, current_file):
     folder = find_folder_containing_file(folders, current_file)
     return os.path.basename(folder) if folder else None
 
-
-def is_view_active(view):
-    if view:
-        active_window = sublime.active_window()
-        if active_window:
-            active_view = active_window.active_view()
-            if active_view:
-                return active_view.buffer_id() == view.buffer_id()
-    return False
 
 
 def handle_activity(view, is_write=False):
@@ -437,7 +327,7 @@ class SendHeartbeatsThread(threading.Thread):
         self.api_key = APIKEY.read() or ''
         self.ignore = SETTINGS.get('ignore', [])
         self.include = SETTINGS.get('include', [])
-        self.hidefilenames = SETTINGS.get('hidefilenames')
+        self.hideFileNames = SETTINGS.get('hide-file-names')
         self.proxy = SETTINGS.get('proxy')
 
         self.heartbeat = heartbeat
@@ -452,9 +342,17 @@ class SendHeartbeatsThread(threading.Thread):
 
         self.send_heartbeats()
 
-    def build_heartbeat(self, entity=None, timestamp=None, is_write=None,
-                        lineno=None, cursorpos=None, lines_in_file=None,
-                        project=None, folders=None):
+    def build_heartbeat(
+        self,
+        entity=None,
+        timestamp=None,
+        is_write=None,
+        lineno=None,
+        cursorpos=None,
+        lines_in_file=None,
+        project=None,
+        folders=None
+    ):
         """Returns a dict for passing to wakatime-cli as arguments."""
 
         heartbeat = {
@@ -481,7 +379,7 @@ class SendHeartbeatsThread(threading.Thread):
 
     def send_heartbeats(self):
         heartbeat = self.build_heartbeat(**self.heartbeat)
-        ua = 'sublime/%d sublime-wakatime/%s' % (ST_VERSION, __version__)
+        ua = 'anki-wakatime/%s' % __version__
         cmd = [
             getCliLocation(),
             '--entity', heartbeat['entity'],
@@ -506,8 +404,8 @@ class SendHeartbeatsThread(threading.Thread):
             cmd.extend(['--include', pattern])
         if self.debug:
             cmd.append('--verbose')
-        if self.hidefilenames:
-            cmd.append('--hidefilenames')
+        if self.hideFileNames:
+            cmd.append('--hide-file-names')
         if self.proxy:
             cmd.extend(['--proxy', self.proxy])
         if self.has_extra_heartbeats:
@@ -520,48 +418,17 @@ class SendHeartbeatsThread(threading.Thread):
             stdin = None
             inp = None
 
-        log(DEBUG, ' '.join(obfuscate_apikey(cmd)))
+        log(LogLevel.DEBUG, ' '.join(obfuscate_apikey(cmd)))
         try:
             process = Popen(cmd, stdin=stdin, stdout=PIPE, stderr=STDOUT)
             output, _err = process.communicate(input=inp)
             retcode = process.poll()
-            if (not retcode or retcode == 102 or retcode == 112) and not output:
-                self.sent()
-            else:
-                update_status_bar('Error')
             if retcode:
-                log(DEBUG if retcode == 102 or retcode == 112 else ERROR, 'wakatime-core exited with status: {0}'.format(retcode))
+                log(LogLevel.DEBUG if retcode == 102 or retcode == 112 else LogLevel.ERROR, 'wakatime-core exited with status: {0}'.format(retcode))
             if output:
-                log(ERROR, u('wakatime-core output: {0}').format(output))
+                log(LogLevel.ERROR, 'wakatime-core output: {0}'.format(output))
         except:
-            log(ERROR, u(sys.exc_info()[1]))
-            update_status_bar('Error')
-
-    def sent(self):
-        update_status_bar('OK')
-
-
-def plugin_loaded():
-    global SETTINGS
-    SETTINGS = sublime.load_settings(SETTINGS_FILE)
-
-    log(INFO, 'Initializing WakaTime plugin v%s' % __version__)
-    update_status_bar('Initializing...')
-
-    UpdateCLI().start()
-
-    after_loaded()
-
-
-def after_loaded():
-    if not prompt_api_key():
-        set_timeout(after_loaded, 0.5)
-    update_status_bar('OK')
-
-
-# need to call plugin_loaded because only ST3 will auto-call it
-if ST_VERSION < 3000:
-    plugin_loaded()
+            log(LogLevel.ERROR, sys.exc_info()[1])
 
 
 class WakatimeListener(sublime_plugin.EventListener):
@@ -578,11 +445,6 @@ class WakatimeListener(sublime_plugin.EventListener):
             handle_activity(view)
 
 
-class WakatimeDashboardCommand(sublime_plugin.ApplicationCommand):
-
-    def run(self):
-        webbrowser.open_new_tab('https://wakatime.com/dashboard')
-
 
 class UpdateCLI(threading.Thread):
     """Non-blocking thread for downloading latest wakatime-cli from GitHub.
@@ -592,7 +454,7 @@ class UpdateCLI(threading.Thread):
         if isCliLatest():
             return
 
-        log(INFO, 'Downloading wakatime-cli...')
+        log(LogLevel.INFO, 'Downloading wakatime-cli...')
 
         if os.path.isdir(os.path.join(RESOURCES_FOLDER, 'wakatime-cli')):
             shutil.rmtree(os.path.join(RESOURCES_FOLDER, 'wakatime-cli'))
@@ -602,7 +464,7 @@ class UpdateCLI(threading.Thread):
 
         try:
             url = cliDownloadUrl()
-            log(DEBUG, 'Downloading wakatime-cli from {url}'.format(url=url))
+            log(LogLevel.DEBUG, 'Downloading wakatime-cli from {url}'.format(url=url))
             zip_file = os.path.join(RESOURCES_FOLDER, 'wakatime-cli.zip')
             download(url, zip_file)
 
@@ -610,9 +472,9 @@ class UpdateCLI(threading.Thread):
                 try:
                     os.remove(getCliLocation())
                 except:
-                    log(DEBUG, traceback.format_exc())
+                    log(LogLevel.DEBUG, traceback.format_exc())
 
-            log(INFO, 'Extracting wakatime-cli...')
+            log(LogLevel.INFO, 'Extracting wakatime-cli...')
             with ZipFile(zip_file) as zf:
                 zf.extractall(RESOURCES_FOLDER)
 
@@ -622,13 +484,13 @@ class UpdateCLI(threading.Thread):
             try:
                 os.remove(os.path.join(RESOURCES_FOLDER, 'wakatime-cli.zip'))
             except:
-                log(DEBUG, traceback.format_exc())
+                log(LogLevel.DEBUG, traceback.format_exc())
         except:
-            log(DEBUG, traceback.format_exc())
+            log(LogLevel.DEBUG, traceback.format_exc())
 
         createSymlink()
 
-        log(INFO, 'Finished extracting wakatime-cli.')
+        log(LogLevel.INFO, 'Finished extracting wakatime-cli.')
 
 
 def getCliLocation():
@@ -672,11 +534,11 @@ def isCliLatest():
     stdout = (stdout or b'') + (stderr or b'')
     localVer = extractVersion(stdout.decode('utf-8'))
     if not localVer:
-        log(DEBUG, 'Local wakatime-cli version not found.')
+        log(LogLevel.DEBUG, 'Local wakatime-cli version not found.')
         return False
 
-    log(INFO, 'Current wakatime-cli version is %s' % localVer)
-    log(INFO, 'Checking for updates to wakatime-cli...')
+    log(LogLevel.INFO, 'Current wakatime-cli version is %s' % localVer)
+    log(LogLevel.INFO, 'Checking for updates to wakatime-cli...')
 
     remoteVer = getLatestCliVersion()
 
@@ -684,10 +546,10 @@ def isCliLatest():
         return True
 
     if remoteVer == localVer:
-        log(INFO, 'wakatime-cli is up to date.')
+        log(LogLevel.INFO, 'wakatime-cli is up to date.')
         return True
 
-    log(INFO, 'Found an updated wakatime-cli %s' % remoteVer)
+    log(LogLevel.INFO, 'Found an updated wakatime-cli %s' % remoteVer)
     return False
 
 
@@ -703,12 +565,12 @@ def getLatestCliVersion():
         if configs:
             last_modified, last_version = lastModifiedAndVersion(configs)
     except:
-        log(DEBUG, traceback.format_exc())
+        log(LogLevel.DEBUG, traceback.format_exc())
 
     try:
         headers, contents, code = request(GITHUB_RELEASES_STABLE_URL, last_modified=last_modified)
 
-        log(DEBUG, 'GitHub API Response {0}'.format(code))
+        log(LogLevel.DEBUG, 'GitHub API Response {0}'.format(code))
 
         if code == 304:
             LATEST_CLI_VERSION = last_version
@@ -717,7 +579,7 @@ def getLatestCliVersion():
         data = json.loads(contents.decode('utf-8'))
 
         ver = data['tag_name']
-        log(DEBUG, 'Latest wakatime-cli version from GitHub: {0}'.format(ver))
+        log(LogLevel.DEBUG, 'Latest wakatime-cli version from GitHub: {0}'.format(ver))
 
         if configs:
             last_modified = headers.get('Last-Modified')
@@ -731,7 +593,7 @@ def getLatestCliVersion():
         LATEST_CLI_VERSION = ver
         return ver
     except:
-        log(DEBUG, traceback.format_exc())
+        log(LogLevel.DEBUG, traceback.format_exc())
         return None
 
 
@@ -820,7 +682,7 @@ def request(url, last_modified=None):
         if err.code == 304:
             return None, None, 304
 
-        log(DEBUG, err.read().decode())
+        log(LogLevel.DEBUG, err.read().decode())
         raise
     except IOError:
         raise
@@ -828,7 +690,7 @@ def request(url, last_modified=None):
 
 def download(url, filePath):
     req = Request(url)
-    req.add_header('User-Agent', 'github.com/wakatime/sublime-wakatime')
+    # req.add_header('User-Agent', 'github.com/wakatime/anki-wakatime')
 
     proxy = SETTINGS.get('proxy')
     if proxy:
@@ -842,7 +704,7 @@ def download(url, filePath):
             if err.code == 304:
                 return None, None, 304
 
-            log(DEBUG, err.read().decode())
+            log(LogLevel.DEBUG, err.read().decode())
             raise
         except IOError:
 
@@ -850,26 +712,26 @@ def download(url, filePath):
 
 
 def is_symlink(path):
-    try:
-        return os.is_symlink(path)
-    except:
-        return False
+    return os.path.islink(path) or False
 
 
 def createSymlink():
-    link = os.path.join(RESOURCES_FOLDER, 'wakatime-cli')
+    link: Path = RESOURCES_FOLDER
     if is_win:
-        link = link + '.exe'
-    elif os.path.exists(link) and is_symlink(link):
+        link = link / 'wakatime-cli.exe'
+    else:
+        link = link / 'wakatime-cli'
+
+    if link.exists() and link.is_symlink():
         return  # don't re-create symlink on Unix-like platforms
 
     try:
-        os.symlink(getCliLocation(), link)
+        link.symlink_to(getCliLocation())
     except:
         try:
             shutil.copy2(getCliLocation(), link)
             if not is_win:
                 os.chmod(link, 509)  # 755
         except:
-            log(WARNING, traceback.format_exc())
+            log(LogLevel.WARNING, traceback.format_exc())
 
