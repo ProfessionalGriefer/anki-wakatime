@@ -2,7 +2,7 @@
 from aqt import mw
 # import the "show info" tool from utils.py
 from aqt.utils import showInfo, qconnect
-# import all of the Qt GUI library
+# import everything from the Qt GUI library
 from aqt.qt import *
 
 
