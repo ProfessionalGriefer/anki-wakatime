@@ -2,20 +2,20 @@
 Functions for downloading the CLI from the internet
 """
 
-from pathlib import Path
-from urllib.request import Request, urlopen
-from urllib.error import HTTPError
-import threading
-from zipfile import ZipFile
-import traceback
 import os
-import shutil
 import platform
+import shutil
+import threading
+import traceback
+from pathlib import Path
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+from zipfile import ZipFile
 
-# Custom imports
-from helpers import LogLevel, log
 import globals as g
 from cli import isCliLatest, isCliInstalled, getCliLocation, architecture, getLatestCliVersion
+# Custom imports
+from helpers import LogLevel, log
 
 
 def request(url, last_modified=None):
@@ -47,6 +47,7 @@ def request(url, last_modified=None):
         raise
     except IOError:
         raise
+
 
 class UpdateCLI(threading.Thread):
     """
@@ -172,6 +173,7 @@ def reportMissingPlatformSupport(osname: str, arch: str):
     url = f'https://api.wakatime.com/api/v1/cli-missing?osname={osname}&architecture={arch}&plugin=anki'
     request(url)
 
+
 def download(url, filePath: Path):
     req = Request(url)
     # req.add_header('User-Agent', 'github.com/wakatime/anki-wakatime')
@@ -191,5 +193,7 @@ def download(url, filePath: Path):
             log(LogLevel.DEBUG, err.read().decode())
             raise
         except IOError:
-
             raise
+
+
+UpdateCLI().start()

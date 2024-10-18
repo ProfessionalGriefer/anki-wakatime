@@ -11,12 +11,14 @@ import traceback
 
 import globals as g
 
+
 # Log Levels
 class LogLevel(Enum):
-    DEBUG   = 'DEBUG'
-    INFO    = 'INFO'
+    DEBUG = 'DEBUG'
+    INFO = 'INFO'
     WARNING = 'WARNING'
-    ERROR   = 'ERROR'
+    ERROR = 'ERROR'
+
 
 def log(lvl: LogLevel, message, *args, **kwargs):
     """
@@ -39,6 +41,7 @@ def log(lvl: LogLevel, message, *args, **kwargs):
 
     except RuntimeError:
         set_timeout(lambda: log(lvl, message, *args, **kwargs), 0)
+
 
 class Popen(subprocess.Popen):
     """Patched Popen to prevent opening cmd window on Windows platform."""
@@ -66,6 +69,7 @@ def set_timeout(callback: Callable, seconds: int):
     timer = threading.Timer(seconds, callback)
     timer.start()
 
+
 def obfuscate_apikey(command_list: list[str]):
     """
     Hides the API key when printing the command_list to the console
@@ -80,6 +84,7 @@ def obfuscate_apikey(command_list: list[str]):
     if apikey_index is not None and apikey_index < len(cmd):
         cmd[apikey_index] = 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' + cmd[apikey_index][-4:]
     return cmd
+
 
 def parseConfigFile(configFile: Path) -> ConfigParser | None:
     """
@@ -103,3 +108,11 @@ def parseConfigFile(configFile: Path) -> ConfigParser | None:
     except IOError:
         log(LogLevel.DEBUG, f"Error: Could not read from config file {configFile}\n")
         return configs
+
+
+def enough_time_passed(now: float, is_write: bool) -> bool:
+    if now - g.LAST_HEARTBEAT['time'] > g.HEARTBEAT_FREQUENCY * 60:
+        return True
+    if is_write and now - g.LAST_HEARTBEAT['time'] > 2:
+        return True
+    return False
