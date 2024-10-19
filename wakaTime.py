@@ -10,48 +10,22 @@ Website:     https://github.com/ProfessionalGriefer/anki-wakatime
 __version__ = '0.1'
 
 import json
-import time
+import sys
 import threading
-from subprocess import STDOUT, PIPE
+import time
 from queue import Empty as QueueEmpty
+from subprocess import STDOUT, PIPE
 
 # Imports for Anki
-from aqt import mw
-from aqt.utils import showInfo
-from aqt.qt import *
-ankiConfig = mw.addonManager.getConfig(__name__)
+from anki.cards import Card
+from anki.collection import Collection
 
+import globals as g
+from __init__ import ApiDialogWidget, ankiConfig
 # Custom imports
 from cli import isCliInstalled, getCliLocation
+from helpers import LogLevel, log, Popen, obfuscate_apikey, set_timeout, enough_time_passed
 from types import HeartBeatType, LastHeartBeatType
-from helpers import LogLevel, log, Popen, obfuscate_apikey, set_timeout
-import globals as g
-
-class ApiDialogWidget(QInputDialog):
-    """
-    Used within the ApiKey class to get the API key from the user if none has been found in the config
-    Must be a class because it is displaying a new QtWidget
-    :return: API key
-    """
-    def __init__(self):
-        super().__init__()
-
-    def prompt(self) -> str | None:
-        promptText = "Enter the WakaTime API Key"
-        wakaKeyTemplate = "waka_XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
-        key, ok = QInputDialog.getText(self, promptText, wakaKeyTemplate)
-
-        if ok and key:
-            # Save the text to addon's config
-            ankiConfig["wakaTime-api-key"] = key
-            mw.addonManager.writeConfig(__name__, ankiConfig)
-
-            # Optionally show a message confirming it was saved
-            showInfo("Your new API key has been saved")
-
-            return key
-
-        return None
 
 
 class ApiKey(object):
@@ -80,51 +54,33 @@ class ApiKey(object):
 APIKEY = ApiKey()
 
 
-
-def enough_time_passed(now: float, is_write: bool) -> bool:
-    if now - g.LAST_HEARTBEAT['time'] > g.HEARTBEAT_FREQUENCY * 60:
-        return True
-    if is_write and now - g.LAST_HEARTBEAT['time'] > 2:
-        return True
-    return False
-
-
-def handle_activity(view, is_write=False):
-    window = view.window()
-    if window is not None:
-        entity = view.file_name()
-        if entity:
-            timestamp: float = time.time()
-            last_file = g.LAST_HEARTBEAT['file']
-            if entity != last_file or enough_time_passed(timestamp, is_write):
-                project = window.project_data() if hasattr(window, 'project_data') else None
-                folders = window.folders()
-                append_heartbeat(entity, timestamp, is_write, view, project, folders)
+def handle_activity(card: Card, is_write=False):
+    # Get the first value of dict, hopefully that is the main question of the card
+    entity = next(iter(card.note().values()))
+    timestamp: float = time.time()
+    last_file: str = g.LAST_HEARTBEAT['file']
+    if entity != last_file or enough_time_passed(timestamp, is_write):
+        col: Collection = card.col()
+        deck_id = card.did
+        project = col.decks.name(deck_id)
+        append_heartbeat(entity, timestamp, is_write, project)
 
 
-def append_heartbeat(entity, timestamp, is_write, view, project, folders):
-
+def append_heartbeat(entity: str, timestamp: float, is_write: bool, project: str):
     # add this heartbeat to queue
     heartbeat: HeartBeatType = {
         'entity': entity,
         'timestamp': timestamp,
         'is_write': is_write,
         'project': project,
-        'folders': folders,
-        'lines_in_file': view.rowcol(view.size())[0] + 1,
+        'lines_in_file': len(entity.split('\n'))
     }
-    selections = view.sel()
-    if selections and len(selections) > 0:
-        rowcol = view.rowcol(selections[0].begin())
-        row, col = rowcol[0] + 1, rowcol[1] + 1
-        heartbeat['lineno'] = row
-        heartbeat['cursorpos'] = col
     g.HEARTBEATS.put_nowait(heartbeat)
 
     # make this heartbeat the LAST_HEARTBEAT
     g.LAST_HEARTBEAT: LastHeartBeatType = {
-        'file': entity,
         'time': timestamp,
+        'file': entity,
         'is_write': is_write,
     }
 
@@ -133,7 +89,6 @@ def append_heartbeat(entity, timestamp, is_write, view, project, folders):
 
 
 def process_queue(timestamp):
-
     if not isCliInstalled():
         return
 
@@ -163,6 +118,25 @@ def process_queue(timestamp):
     thread.start()
 
 
+def build_heartbeat(
+        entity=None,
+        timestamp=None,
+        is_write=None,
+        project=None,
+        lines_in_file=None,
+) -> HeartBeatType:
+    """Returns a dict for passing to wakatime-cli as arguments."""
+    heartbeat: HeartBeatType = {
+        'entity': entity,
+        'timestamp': timestamp,
+        'is_write': is_write,
+        'project': project,
+        'lines_in_file': lines_in_file,
+    }
+
+    return heartbeat
+
+
 class SendHeartbeatsThread(threading.Thread):
     """Non-blocking thread for sending heartbeats to api.
     """
@@ -174,13 +148,14 @@ class SendHeartbeatsThread(threading.Thread):
         self.api_key = APIKEY.read() or ''
         self.ignore = g.SETTINGS.get('ignore', [])
         self.include = g.SETTINGS.get('include', [])
-        self.hideFileNames = g.SETTINGS.get('hide-file-names')
+        self.hideFileNames = g.SETTINGS.get('hide_file_names')
         self.proxy = g.SETTINGS.get('proxy')
 
         self.heartbeat = heartbeat
         self.has_extra_heartbeats = False
+        self.extra_heartbeats = None
 
-    def add_extra_heartbeats(self, extra_heartbeats):
+    def add_extra_heartbeats(self, extra_heartbeats) -> None:
         self.has_extra_heartbeats = True
         self.extra_heartbeats = extra_heartbeats
 
@@ -189,43 +164,8 @@ class SendHeartbeatsThread(threading.Thread):
 
         self.send_heartbeats()
 
-    def build_heartbeat(
-        self,
-        entity=None,
-        timestamp=None,
-        is_write=None,
-        project=None,
-        folders=None,
-        lines_in_file=None,
-        lineno=None,
-        cursorpos=None,
-    ):
-        """Returns a dict for passing to wakatime-cli as arguments."""
-
-        heartbeat = {
-            'entity': entity,
-            'timestamp': timestamp,
-            'is_write': is_write,
-        }
-
-        if project and project.get('name'):
-            heartbeat['alternate_project'] = project.get('name')
-        elif folders:
-            project_name = find_project_from_folders(folders, entity)
-            if project_name:
-                heartbeat['alternate_project'] = project_name
-
-        if lineno is not None:
-            heartbeat['lineno'] = lineno
-        if cursorpos is not None:
-            heartbeat['cursorpos'] = cursorpos
-        if lines_in_file is not None:
-            heartbeat['lines-in-file'] = lines_in_file
-
-        return heartbeat
-
     def send_heartbeats(self):
-        heartbeat = self.build_heartbeat(**self.heartbeat)
+        heartbeat = build_heartbeat(**self.heartbeat)
         ua = f'anki-wakatime/{__version__}'
         cmd: list[str] = [
             getCliLocation(),
@@ -237,12 +177,6 @@ class SendHeartbeatsThread(threading.Thread):
             cmd.extend(['--key', str(bytes.decode(self.api_key.encode('utf8')))])
         if heartbeat['is_write']:
             cmd.append('--write')
-        if heartbeat.get('alternate_project'):
-            cmd.extend(['--alternate-project', heartbeat['alternate_project']])
-        if heartbeat.get('lineno') is not None:
-            cmd.extend(['--lineno', f'{heartbeat['lineno']}'])
-        if heartbeat.get('cursorpos') is not None:
-            cmd.extend(['--cursorpos', f'{heartbeat['cursorpos']}'])
         if heartbeat.get('lines_in_file') is not None:
             cmd.extend(['--lines-in-file', f'{heartbeat['lines_in_file']}'])
         for pattern in self.ignore:
@@ -258,10 +192,10 @@ class SendHeartbeatsThread(threading.Thread):
         if self.has_extra_heartbeats:
             cmd.append('--extra-heartbeats')
             stdin = PIPE
-            extra_heartbeats = json.dumps([self.build_heartbeat(**x) for x in self.extra_heartbeats])
+            extra_heartbeats = json.dumps([build_heartbeat(**x) for x in self.extra_heartbeats])
             inp = "{0}\n".format(extra_heartbeats).encode('utf-8')
         else:
-            extra_heartbeats = None
+            self.extra_heartbeats = None
             stdin = None
             inp = None
 
@@ -271,12 +205,9 @@ class SendHeartbeatsThread(threading.Thread):
             output, _err = process.communicate(input=inp)
             retcode = process.poll()
             if retcode:
-                log(LogLevel.DEBUG if retcode == 102 or retcode == 112 else LogLevel.ERROR, f'wakatime-core exited with status: {retcode}')
+                log(LogLevel.DEBUG if retcode == 102 or retcode == 112 else LogLevel.ERROR,
+                    f'wakatime-core exited with status: {retcode}')
             if output:
                 log(LogLevel.ERROR, f'wakatime-core output: {output}')
         except:
             log(LogLevel.ERROR, sys.exc_info()[1])
-
-
-def is_symlink(path):
-    return os.path.islink(path) or False

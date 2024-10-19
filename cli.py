@@ -1,21 +1,19 @@
 """
 Managing the wakatime-cli
 """
-from pathlib import Path
-import platform
-import sys
-import re
-from subprocess import PIPE
-import traceback
 import json
+import platform
+import re
+import sys
+import traceback
 from configparser import ConfigParser
-import globals as g
+from pathlib import Path
+from subprocess import PIPE
 
+import globals as g
+from download import request
 # Custom imports
 from helpers import LogLevel, log, Popen, parseConfigFile
-from download import request
-
-
 
 
 def getCliLocation() -> Path:
@@ -35,6 +33,7 @@ def getCliLocation() -> Path:
 
     return g.WAKATIME_CLI_LOCATION
 
+
 def architecture():
     """
     Used within getCliLocation() to get the correct name
@@ -46,11 +45,13 @@ def architecture():
     if arch == 'aarch64':
         return 'arm64'
     if 'arm' in arch:
-        return 'arm64' if sys.maxsize > 2**32 else 'arm'
-    return 'amd64' if sys.maxsize > 2**32 else '386'
+        return 'arm64' if sys.maxsize > 2 ** 32 else 'arm'
+    return 'amd64' if sys.maxsize > 2 ** 32 else '386'
+
 
 def isCliInstalled():
     return getCliLocation().exists()
+
 
 def isCliLatest():
     if not isCliInstalled():
@@ -157,5 +158,3 @@ def lastModifiedAndVersion(configs) -> (str | None, str | None):
     if last_modified and last_version and extractVersion(last_version):
         return last_modified, last_version
     return None, None
-
-
