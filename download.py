@@ -18,6 +18,7 @@ from .cli import isCliLatest, isCliInstalled, getCliLocation, architecture, getL
 from .helpers import LogLevel, log, request
 
 
+# TODO UpdateCLI doesn't run anywhere
 class UpdateCLI(threading.Thread):
     """
     Non-blocking thread for downloading latest wakatime-cli from GitHub.

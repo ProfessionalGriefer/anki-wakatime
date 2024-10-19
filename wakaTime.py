@@ -5,12 +5,12 @@ Description: Automatic time tracking for Anki
 Maintainer:  Vincent Nahn
 License:     BSD 3, see LICENSE for more details.
 Website:     https://github.com/ProfessionalGriefer/anki-wakatime
+Debug:       https://wakatime.com/plugins/status
 ==========================================================="""
 
 __version__ = '0.1'
 
 import json
-import sys
 import threading
 import time
 from queue import Empty as QueueEmpty
@@ -94,7 +94,7 @@ def handle_activity(card: Card, is_write=False):
     timestamp: float = time.time()
     last_file: str = g.LAST_HEARTBEAT['file']
     if entity != last_file or enough_time_passed(timestamp, is_write):
-        col: Collection = card.col()
+        col: Collection = card.col
         deck_id = card.did
         project = col.decks.name(deck_id)
         append_heartbeat(entity, timestamp, is_write, project)
