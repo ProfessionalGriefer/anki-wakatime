@@ -12,10 +12,10 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from zipfile import ZipFile
 
-import globals as g
-from cli import isCliLatest, isCliInstalled, getCliLocation, architecture, getLatestCliVersion
+from . import globals as g
+from .cli import isCliLatest, isCliInstalled, getCliLocation, architecture, getLatestCliVersion
 # Custom imports
-from helpers import LogLevel, log
+from .helpers import LogLevel, log
 
 
 def request(url, last_modified=None):

@@ -20,12 +20,12 @@ from subprocess import STDOUT, PIPE
 from anki.cards import Card
 from anki.collection import Collection
 
-import globals as g
-from __init__ import ApiDialogWidget, ankiConfig
+from . import globals as g
+from .__init__ import ApiDialogWidget, ankiConfig
 # Custom imports
-from cli import isCliInstalled, getCliLocation
-from helpers import LogLevel, log, Popen, obfuscate_apikey, set_timeout, enough_time_passed
-from types import HeartBeatType, LastHeartBeatType
+from .cli import isCliInstalled, getCliLocation
+from .helpers import LogLevel, log, Popen, obfuscate_apikey, set_timeout, enough_time_passed
+from .types import HeartBeatType, LastHeartBeatType
 
 
 class ApiKey(object):
@@ -178,7 +178,7 @@ class SendHeartbeatsThread(threading.Thread):
         if heartbeat['is_write']:
             cmd.append('--write')
         if heartbeat.get('lines_in_file') is not None:
-            cmd.extend(['--lines-in-file', f'{heartbeat['lines_in_file']}'])
+            cmd.extend(['--lines-in-file', f'{heartbeat["lines_in_file"]}'])
         for pattern in self.ignore:
             cmd.extend(['--exclude', pattern])
         for pattern in self.include:

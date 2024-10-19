@@ -10,10 +10,10 @@ from configparser import ConfigParser
 from pathlib import Path
 from subprocess import PIPE
 
-import globals as g
-from download import request
+from . import globals as g
+from .download import request
 # Custom imports
-from helpers import LogLevel, log, Popen, parseConfigFile
+from .helpers import LogLevel, log, Popen, parseConfigFile
 
 
 def getCliLocation() -> Path:

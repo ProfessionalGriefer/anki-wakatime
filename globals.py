@@ -3,7 +3,7 @@ import platform
 from pathlib import Path
 from queue import Queue
 
-from types import HeartBeatType, LastHeartBeatType, SettingsType
+from .types import HeartBeatType, LastHeartBeatType, SettingsType
 
 is_win = platform.system() == 'Windows'
 

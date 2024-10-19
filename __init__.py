@@ -5,7 +5,7 @@ from aqt import mw, gui_hooks
 from aqt.qt import *
 from aqt.utils import showInfo
 
-from wakaTime import handle_activity
+from .wakaTime import handle_activity
 
 ankiConfig = mw.addonManager.getConfig(__name__)
 
