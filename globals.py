@@ -7,7 +7,8 @@ from .types import HeartBeatType, LastHeartBeatType, SettingsType
 
 is_win = platform.system() == 'Windows'
 
-HOME_FOLDER: Path = Path(os.environ.get('WAKATIME_HOME')).resolve() or Path.home()
+home_variable = os.environ.get('WAKATIME_HOME')
+HOME_FOLDER: Path = Path(home_variable).resolve() if home_variable else Path.home()
 
 RESOURCES_FOLDER = HOME_FOLDER / '.wakatime'
 CONFIG_FILE = HOME_FOLDER / '.wakatime.cfg'
@@ -19,12 +20,12 @@ SETTINGS: SettingsType = {
     "ignore": [],
     "include": [],
     "hide_file_names": False,
-    "proxy": None
+    "proxy": ""
 }
 
 LAST_HEARTBEAT: LastHeartBeatType = {
     'time': 0,
-    'file': None,
+    'file': "",
     'is_write': False,
 }
 
@@ -33,7 +34,7 @@ LAST_FETCH_TODAY_CODING_TIME = 0
 FETCH_TODAY_DEBOUNCE_COUNTER = 0
 FETCH_TODAY_DEBOUNCE_SECONDS = 60
 LATEST_CLI_VERSION = None
-WAKATIME_CLI_LOCATION: Path | None = None
+WAKATIME_CLI_LOCATION: Path = Path()
 HEARTBEATS: Queue[HeartBeatType] = Queue()
 
 HEARTBEAT_FREQUENCY = 2

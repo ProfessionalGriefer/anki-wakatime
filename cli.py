@@ -9,11 +9,10 @@ import traceback
 from configparser import ConfigParser
 from pathlib import Path
 from subprocess import PIPE
+from typing import Optional
 
 from . import globals as g
-from .download import request
-# Custom imports
-from .helpers import LogLevel, log, Popen, parseConfigFile
+from .helpers import LogLevel, log, Popen, parseConfigFile, request
 
 
 def getCliLocation() -> Path:
@@ -108,7 +107,7 @@ def getLatestCliVersion():
 
     configs, last_modified, last_version = None, None, None
     try:
-        configs: ConfigParser | None = parseConfigFile(g.INTERNAL_CONFIG_FILE)
+        configs: Optional[ConfigParser] = parseConfigFile(g.INTERNAL_CONFIG_FILE)
         if configs:
             last_modified, last_version = lastModifiedAndVersion(configs)
     except:
@@ -144,7 +143,7 @@ def getLatestCliVersion():
         return None
 
 
-def lastModifiedAndVersion(configs) -> (str | None, str | None):
+def lastModifiedAndVersion(configs) -> (Optional[str], Optional[str]):
     """
     Used inside get LatestCliVersion()
     :param configs:

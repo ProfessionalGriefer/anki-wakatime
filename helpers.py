@@ -7,9 +7,11 @@ import traceback
 from configparser import ConfigParser
 from enum import Enum
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 
-import globals as g
+from . import globals as g
 
 
 # Log Levels
@@ -86,7 +88,7 @@ def obfuscate_apikey(command_list: list[str]):
     return cmd
 
 
-def parseConfigFile(configFile: Path) -> ConfigParser | None:
+def parseConfigFile(configFile: Path) -> Optional[ConfigParser]:
     """
     Returns a configparser.SafeConfigParser instance with configs
     read from the config file. Default location of the config file is
@@ -116,3 +118,34 @@ def enough_time_passed(now: float, is_write: bool) -> bool:
     if is_write and now - g.LAST_HEARTBEAT['time'] > 2:
         return True
     return False
+
+
+def request(url, last_modified=None):
+    """
+    Used inside getLatestCliVersion()
+    :param url:
+    :param last_modified:
+    :return:
+    """
+    req = Request(url)
+    req.add_header('User-Agent', 'github.com/wakatime/sublime-wakatime')
+
+    proxy = g.SETTINGS.get('proxy')
+    if proxy:
+        req.set_proxy(proxy, 'https')
+
+    if last_modified:
+        req.add_header('If-Modified-Since', last_modified)
+
+    try:
+        resp = urlopen(req)
+        headers = resp.headers
+        return headers, resp.read(), resp.getcode()
+    except HTTPError as err:
+        if err.code == 304:
+            return None, None, 304
+
+        log(LogLevel.DEBUG, err.read().decode())
+        raise
+    except IOError:
+        raise

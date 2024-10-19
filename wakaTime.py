@@ -19,24 +19,58 @@ from subprocess import STDOUT, PIPE
 # Imports for Anki
 from anki.cards import Card
 from anki.collection import Collection
+from aqt.qt import *
+from aqt.utils import showInfo
+from aqt import mw
+
+ankiConfig = mw.addonManager.getConfig(__name__)
 
 from . import globals as g
-from .__init__ import ApiDialogWidget, ankiConfig
-# Custom imports
 from .cli import isCliInstalled, getCliLocation
 from .helpers import LogLevel, log, Popen, obfuscate_apikey, set_timeout, enough_time_passed
 from .types import HeartBeatType, LastHeartBeatType
 
 
+class ApiDialogWidget(QInputDialog):
+    """
+    Used within the ApiKey class to get the API key from the user if none has been found in the config
+    Must be a class because it is displaying a new QtWidget
+    :return: API key
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def prompt(self) -> str:
+        promptText = "Enter the WakaTime API Key"
+        wakaKeyTemplate = "waka_XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+        key, ok = QInputDialog.getText(self, promptText, wakaKeyTemplate)
+
+        if ok and key:
+            # Save the text to addon's config
+            ankiConfig["wakaTime-api-key"] = key
+            mw.addonManager.writeConfig(__name__, ankiConfig)
+
+            # Optionally show a message confirming it was saved
+            showInfo("Your new API key has been saved")
+
+            return key
+
+        return ""
+
+
 class ApiKey(object):
     _key = None
 
-    def read(self) -> str | None:
+    def read(self) -> str:
+        """
+        :return: API key; empty if none have been found
+        """
         if self._key:
             return self._key
 
         # Read from the Anki Addon Config
-        key: str | None = ankiConfig['wakaTime-api-key']
+        key: str = ankiConfig['wakaTime-api-key']
         if key:
             self._key = key
             return self._key
@@ -48,7 +82,7 @@ class ApiKey(object):
         if key:
             self._key = key
             return key
-        return None
+        return ""
 
 
 APIKEY = ApiKey()
@@ -119,11 +153,11 @@ def process_queue(timestamp):
 
 
 def build_heartbeat(
-        entity=None,
-        timestamp=None,
-        is_write=None,
-        project=None,
-        lines_in_file=None,
+        entity,
+        timestamp,
+        is_write,
+        project,
+        lines_in_file: 0,
 ) -> HeartBeatType:
     """Returns a dict for passing to wakatime-cli as arguments."""
     heartbeat: HeartBeatType = {
@@ -177,7 +211,7 @@ class SendHeartbeatsThread(threading.Thread):
             cmd.extend(['--key', str(bytes.decode(self.api_key.encode('utf8')))])
         if heartbeat['is_write']:
             cmd.append('--write')
-        if heartbeat.get('lines_in_file') is not None:
+        if heartbeat.get('lines_in_file') != 0:
             cmd.extend(['--lines-in-file', f'{heartbeat["lines_in_file"]}'])
         for pattern in self.ignore:
             cmd.extend(['--exclude', pattern])

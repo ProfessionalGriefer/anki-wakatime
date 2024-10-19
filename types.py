@@ -19,7 +19,7 @@ class HeartBeatType(TypedDict):
 
 class LastHeartBeatType(TypedDict):
     time: float
-    file: str | None
+    file: str
     is_write: bool
 
 
@@ -28,4 +28,4 @@ class SettingsType(TypedDict):
     ignore: list[str]
     include: list[str]
     hide_file_names: bool
-    proxy: str | None
+    proxy: str

@@ -15,38 +15,7 @@ from zipfile import ZipFile
 from . import globals as g
 from .cli import isCliLatest, isCliInstalled, getCliLocation, architecture, getLatestCliVersion
 # Custom imports
-from .helpers import LogLevel, log
-
-
-def request(url, last_modified=None):
-    """
-    Used inside getLatestCliVersion()
-    :param url:
-    :param last_modified:
-    :return:
-    """
-    req = Request(url)
-    req.add_header('User-Agent', 'github.com/wakatime/sublime-wakatime')
-
-    proxy = g.SETTINGS.get('proxy')
-    if proxy:
-        req.set_proxy(proxy, 'https')
-
-    if last_modified:
-        req.add_header('If-Modified-Since', last_modified)
-
-    try:
-        resp = urlopen(req)
-        headers = resp.headers
-        return headers, resp.read(), resp.getcode()
-    except HTTPError as err:
-        if err.code == 304:
-            return None, None, 304
-
-        log(LogLevel.DEBUG, err.read().decode())
-        raise
-    except IOError:
-        raise
+from .helpers import LogLevel, log, request
 
 
 class UpdateCLI(threading.Thread):
