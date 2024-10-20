@@ -8,7 +8,7 @@ Website:     https://github.com/ProfessionalGriefer/anki-wakatime
 Debug:       https://wakatime.com/plugins/status
 ==========================================================="""
 
-__version__ = '0.1'
+__version__ = '1.0.0'
 
 import json
 import threading
@@ -63,7 +63,7 @@ class ApiDialogWidget(QInputDialog):
             return key
 
         else:
-            print("An error occurred while saving the API key")
+            log(LogLevel.ERROR, "An error occurred while saving the API key")
 
         return ""
 
@@ -92,7 +92,7 @@ class ApiKey(object):
             self._key = key
             return key
 
-        print("Empty key :(")
+        log(LogLevel.DEBUG, "Empty key :(")
         return ""
 
 
@@ -101,7 +101,8 @@ APIKEY = ApiKey()
 
 def handle_activity(card: Card, is_write: bool=False) -> None:
     # Get the first value of dict, hopefully that is the main question of the card
-    entity: str = next(iter(card.note().values()))
+    # entity: str = next(iter(card.note().values()))
+    entity: str = str(card.id)
     timestamp: float = time.time()
     last_file: str = g.LAST_HEARTBEAT['file']
     print(entity, timestamp, last_file)
@@ -119,7 +120,8 @@ def append_heartbeat(entity: str, timestamp: float, is_write: bool, project: str
         'timestamp': timestamp,
         'is_write': is_write,
         'project': project,
-        'lines_in_file': len(entity.split('\n'))
+        # 'lines_in_file': len(entity.split('\n'))
+        'lines_in_file': 1,
     }
     g.HEARTBEATS.put_nowait(heartbeat)
 
@@ -131,10 +133,12 @@ def append_heartbeat(entity: str, timestamp: float, is_write: bool, project: str
     }
 
     # process the queue of heartbeats in the future
+    print("Heartbeats:", g.HEARTBEATS)
     set_timeout(lambda: process_queue(timestamp), g.SEND_BUFFER_SECONDS)
 
 
 def process_queue(timestamp: float) -> None:
+    print(f"Processing at {timestamp}")
     if not isCliInstalled():
         print("CLI not installed!")
         return
@@ -166,11 +170,11 @@ def process_queue(timestamp: float) -> None:
 
 
 def build_heartbeat(
-        entity: str,
-        timestamp: float,
-        is_write: bool,
-        project: str,
-        lines_in_file: int=0,
+    entity: str,
+    timestamp: float,
+    is_write: bool,
+    project: str,
+    lines_in_file: int=0,
 ) -> HeartBeatType:
     """Returns a dict for passing to wakatime-cli as arguments."""
     heartbeat: HeartBeatType = {
@@ -190,6 +194,7 @@ class SendHeartbeatsThread(threading.Thread):
 
     def __init__(self, heartbeat: HeartBeatType):
         threading.Thread.__init__(self)
+        print(heartbeat)
 
         self.debug = g.SETTINGS.get('debug')
         self.api_key = APIKEY.read() or ''
@@ -212,13 +217,19 @@ class SendHeartbeatsThread(threading.Thread):
         self.send_heartbeats()
 
     def send_heartbeats(self) -> None:
+        log(LogLevel.DEBUG, "Sending heartbeat")
         heartbeat: HeartBeatType = build_heartbeat(**self.heartbeat)
-        ua = f'anki-wakatime/{__version__}'
+        # ua = f'anki-wakatime/{__version__}'
+        # testing with sublime
+        ua = f'anki-wakatime/1.12.0'
         cmd: list[str] = [
             str(getCliLocation()),
             '--entity', heartbeat['entity'],
             '--time', str('%f' % heartbeat['timestamp']),
             '--plugin', ua,
+            '--category', 'learning',
+            '--entity-type', 'file'
+    
         ]
         if self.api_key:
             cmd.extend(['--key', str(bytes.decode(self.api_key.encode('utf8')))])
@@ -248,6 +259,7 @@ class SendHeartbeatsThread(threading.Thread):
 
         log(LogLevel.DEBUG, ' '.join(obfuscate_apikey(cmd)))
         try:
+            # Error here
             process = Popen(cmd, stdin=stdin, stdout=PIPE, stderr=STDOUT)
             output, _err = process.communicate(input=inp)
             retcode = process.poll()

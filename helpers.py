@@ -41,7 +41,7 @@ def log(lvl: LogLevel, message: Any, *args: Any, **kwargs: Any) -> None:
             msg = message.format(*args)
         elif len(kwargs) > 0:
             msg = message.format(**kwargs)
-        print('[WakaTime] [{lvl}] {msg}'.format(lvl=lvl, msg=msg))
+        print(f'[WakaTime] [{lvl.name}] {msg}')
 
     except RuntimeError:
         set_timeout(lambda: log(lvl, message, *args, **kwargs), 0)

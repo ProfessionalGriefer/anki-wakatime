@@ -35,9 +35,15 @@ To run Anki in Debug mode run the following commands for MacOS:
 /Applications/Anki.app/Contents/MacOS/anki
 ```
 
-Check the WakaTime's [Status page](https://wakatime.com/plugins/status) to check if a heartbeat has been received.
+Check the WakaTime's [Status page](https://wakatime.com/plugins/status) or the [User Agent API](https://wakatime.com/api/v1/users/current/user_agents) to check if a heartbeat has been received.
 
 Refer to the official [Anki Docs](https://addon-docs.ankiweb.net/console-output.html) for Linux or Windows.
+
+If the debug flag is set within the `settings.py` file you can also tail the output file:
+
+```bash
+tail -f ~/.wakatime/waktime.log
+```
 
 ### Understanding the directory
 
