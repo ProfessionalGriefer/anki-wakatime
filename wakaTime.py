@@ -15,6 +15,8 @@ import threading
 import time
 from queue import Empty as QueueEmpty
 from subprocess import STDOUT, PIPE
+from typing import Optional
+import sys
 
 
 # Imports for Anki
@@ -42,7 +44,7 @@ class ApiDialogWidget(QInputDialog):
     :return: API key
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: Optional[QWidget]=None) -> None:
         super().__init__(parent)
 
     def prompt(self) -> str:
@@ -97,7 +99,7 @@ class ApiKey(object):
 APIKEY = ApiKey()
 
 
-def handle_activity(card: Card, is_write=False):
+def handle_activity(card: Card, is_write: bool=False) -> None:
     # Get the first value of dict, hopefully that is the main question of the card
     entity: str = next(iter(card.note().values()))
     timestamp: float = time.time()
@@ -110,7 +112,7 @@ def handle_activity(card: Card, is_write=False):
         append_heartbeat(entity, timestamp, is_write, project)
 
 
-def append_heartbeat(entity: str, timestamp: float, is_write: bool, project: str):
+def append_heartbeat(entity: str, timestamp: float, is_write: bool, project: str) -> None:
     # add this heartbeat to queue
     heartbeat: HeartBeatType = {
         'entity': entity,
@@ -132,12 +134,13 @@ def append_heartbeat(entity: str, timestamp: float, is_write: bool, project: str
     set_timeout(lambda: process_queue(timestamp), g.SEND_BUFFER_SECONDS)
 
 
-def process_queue(timestamp):
+def process_queue(timestamp: float) -> None:
     if not isCliInstalled():
+        print("CLI not installed!")
         return
 
     # Prevent sending heartbeats more often than SEND_BUFFER_SECONDS
-    now = int(time.time())
+    now = time.time()
     if timestamp != g.LAST_HEARTBEAT['time'] and g.LAST_HEARTBEAT_SENT_AT > now - g.SEND_BUFFER_SECONDS:
         return
     g.LAST_HEARTBEAT_SENT_AT = now
@@ -148,7 +151,7 @@ def process_queue(timestamp):
         return
 
     has_extra_heartbeats = False
-    extra_heartbeats = []
+    extra_heartbeats: list[HeartBeatType] = []
     try:
         while True:
             extra_heartbeats.append(g.HEARTBEATS.get_nowait())
@@ -163,11 +166,11 @@ def process_queue(timestamp):
 
 
 def build_heartbeat(
-        entity,
-        timestamp,
-        is_write,
-        project,
-        lines_in_file=0,
+        entity: str,
+        timestamp: float,
+        is_write: bool,
+        project: str,
+        lines_in_file: int=0,
 ) -> HeartBeatType:
     """Returns a dict for passing to wakatime-cli as arguments."""
     heartbeat: HeartBeatType = {
@@ -185,7 +188,7 @@ class SendHeartbeatsThread(threading.Thread):
     """Non-blocking thread for sending heartbeats to api.
     """
 
-    def __init__(self, heartbeat):
+    def __init__(self, heartbeat: HeartBeatType):
         threading.Thread.__init__(self)
 
         self.debug = g.SETTINGS.get('debug')
@@ -195,24 +198,24 @@ class SendHeartbeatsThread(threading.Thread):
         self.hideFileNames = g.SETTINGS.get('hide_file_names')
         self.proxy = g.SETTINGS.get('proxy')
 
-        self.heartbeat = heartbeat
+        self.heartbeat: HeartBeatType = heartbeat
         self.has_extra_heartbeats = False
-        self.extra_heartbeats = None
+        self.extra_heartbeats: list[HeartBeatType] = []
 
-    def add_extra_heartbeats(self, extra_heartbeats) -> None:
+    def add_extra_heartbeats(self, extra_heartbeats: list[HeartBeatType]) -> None:
         self.has_extra_heartbeats = True
         self.extra_heartbeats = extra_heartbeats
 
-    def run(self):
+    def run(self) -> None:
         """Running in background thread."""
 
         self.send_heartbeats()
 
-    def send_heartbeats(self):
-        heartbeat = build_heartbeat(**self.heartbeat)
+    def send_heartbeats(self) -> None:
+        heartbeat: HeartBeatType = build_heartbeat(**self.heartbeat)
         ua = f'anki-wakatime/{__version__}'
         cmd: list[str] = [
-            getCliLocation(),
+            str(getCliLocation()),
             '--entity', heartbeat['entity'],
             '--time', str('%f' % heartbeat['timestamp']),
             '--plugin', ua,
@@ -239,7 +242,7 @@ class SendHeartbeatsThread(threading.Thread):
             extra_heartbeats = json.dumps([build_heartbeat(**x) for x in self.extra_heartbeats])
             inp = "{0}\n".format(extra_heartbeats).encode('utf-8')
         else:
-            self.extra_heartbeats = None
+            self.extra_heartbeats = []
             stdin = None
             inp = None
 

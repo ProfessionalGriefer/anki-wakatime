@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Callable, Optional
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
+from typing import Any
+from http.client import HTTPResponse, HTTPMessage
 
 from . import globals as g
 
@@ -22,7 +24,7 @@ class LogLevel(Enum):
     ERROR = 'ERROR'
 
 
-def log(lvl: LogLevel, message, *args, **kwargs):
+def log(lvl: LogLevel, message: Any, *args: Any, **kwargs: Any) -> None:
     """
     Logging messages
     :param lvl:
@@ -48,9 +50,9 @@ def log(lvl: LogLevel, message, *args, **kwargs):
 class Popen(subprocess.Popen):
     """Patched Popen to prevent opening cmd window on Windows platform."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any):
         if g.is_win:
-            startupinfo = kwargs.get('startupinfo')
+            startupinfo: Optional[subprocess.STARTUPINFO] = kwargs.get('startupinfo')
             try:
                 startupinfo = startupinfo or subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
@@ -60,7 +62,7 @@ class Popen(subprocess.Popen):
         super(Popen, self).__init__(*args, **kwargs)
 
 
-def set_timeout(callback: Callable, seconds: int) -> None:
+def set_timeout(callback: Callable[..., Any], seconds: int) -> None:
     """
     Executes the callback non-blockingly in a different thread.
     Runs the callback on an alternate thread in the original implementation for Sublime
@@ -68,11 +70,16 @@ def set_timeout(callback: Callable, seconds: int) -> None:
 
     # milliseconds = int(seconds * 1000)
     # sublime.set_timeout_async(callback, milliseconds)
-    timer = threading.Timer(seconds, callback)
-    timer.start()
+    # TODO: Remove this
+    # timer = threading.Timer(seconds, callback)
+    # timer.start()
+    # thread = threading.Thread(target=callback)
+    # thread.start()
+    # thread.join()
+    callback()
 
 
-def obfuscate_apikey(command_list: list[str]):
+def obfuscate_apikey(command_list: list[str]) -> list[str]:
     """
     Hides the API key when printing the command_list to the console
     :param command_list:
@@ -97,7 +104,7 @@ def parseConfigFile(configFile: Path) -> Optional[ConfigParser]:
     :return: ConfigParser object if successful
     """
 
-    kwargs = {'strict': False}
+    kwargs: dict[str, Any] = {'strict': False}
     configs = ConfigParser(**kwargs)
     try:
         with configFile.open(mode='r', encoding='utf-8') as f:
@@ -120,12 +127,12 @@ def enough_time_passed(now: float, is_write: bool) -> bool:
     return False
 
 
-def request(url, last_modified=None):
+def request(url: str, last_modified: Optional[str]=None) -> tuple[Optional[HTTPMessage], Optional[bytes], int]:
     """
     Used inside getLatestCliVersion()
     :param url:
     :param last_modified:
-    :return:
+    :return: Headers, contents, code
     """
     req = Request(url)
     req.add_header('User-Agent', 'github.com/wakatime/sublime-wakatime')
@@ -138,7 +145,7 @@ def request(url, last_modified=None):
         req.add_header('If-Modified-Since', last_modified)
 
     try:
-        resp = urlopen(req)
+        resp: HTTPResponse = urlopen(req)
         headers = resp.headers
         return headers, resp.read(), resp.getcode()
     except HTTPError as err:

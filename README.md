@@ -24,13 +24,18 @@ python -m pip install -r ./requirements.txt
 ln -s . /Users/vincent/Library/Application Support/Anki2/addons21 # Only on MacOS
 ```
 
-The last command creates a softlink from the current directory to the Anki's addon folder
+The last command creates a softlink from the current directory to the Anki's addon folder.
+Make sure to set the `--strict` flag when using Mypy.
+
+### Debugging
 
 To run Anki in Debug mode run the following commands for MacOS:
 
 ```bash
 /Applications/Anki.app/Contents/MacOS/anki
 ```
+
+Check the WakaTime's [Status page](https://wakatime.com/plugins/status) to check if a heartbeat has been received.
 
 Refer to the official [Anki Docs](https://addon-docs.ankiweb.net/console-output.html) for Linux or Windows.
 
@@ -48,4 +53,5 @@ Refer to the official [Anki Docs](https://addon-docs.ankiweb.net/console-output.
 - `requirements.txt`: Lists all the required Python dependencies
 
 Found my add-on useful? Consider buying me a coffee!
+
 <a href="https://www.buymeacoffee.com/vincentnahn"><img src="https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&emoji=☕&slug=vincentnahn&button_colour=800020&font_colour=ffffff&font_family=Inter&outline_colour=ffffff&coffee_colour=FFDD00" /></a>

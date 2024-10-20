@@ -24,7 +24,7 @@ class UpdateCLI(threading.Thread):
     Non-blocking thread for downloading latest wakatime-cli from GitHub.
     """
 
-    def run(self):
+    def run(self) -> None:
         if isCliLatest():
             return
 
@@ -68,7 +68,7 @@ class UpdateCLI(threading.Thread):
         log(LogLevel.INFO, 'Finished extracting wakatime-cli.')
 
 
-def createSymlink():
+def createSymlink() -> None:
     """
     Used inside the UpdateCLI class
     :return:
@@ -133,7 +133,7 @@ def cliDownloadUrl() -> str:
     return f'{prefix}/{version}/wakatime-cli-{osname}-{arch}.zip'
 
 
-def reportMissingPlatformSupport(osname: str, arch: str):
+def reportMissingPlatformSupport(osname: str, arch: str) -> None:
     """
     Used inside cliDownloadUrl()
     :param osname:
@@ -144,7 +144,7 @@ def reportMissingPlatformSupport(osname: str, arch: str):
     request(url)
 
 
-def download(url, filePath: Path):
+def download(url: str, filePath: Path) -> None:
     req = Request(url)
     # req.add_header('User-Agent', 'github.com/wakatime/anki-wakatime')
 
@@ -157,8 +157,10 @@ def download(url, filePath: Path):
             resp = urlopen(req)
             f.write(resp.read())
         except HTTPError as err:
+            # HTTP 304 means: not modified
             if err.code == 304:
-                return None, None, 304
+                print("HTTP 304")
+                # return None, None, 304
 
             log(LogLevel.DEBUG, err.read().decode())
             raise

@@ -33,7 +33,7 @@ def getCliLocation() -> Path:
     return g.WAKATIME_CLI_LOCATION
 
 
-def architecture():
+def architecture() -> str:
     """
     Used within getCliLocation() to get the correct name
     :return:
@@ -48,11 +48,11 @@ def architecture():
     return 'amd64' if sys.maxsize > 2 ** 32 else '386'
 
 
-def isCliInstalled():
+def isCliInstalled() -> bool:
     return getCliLocation().exists()
 
 
-def isCliLatest():
+def isCliLatest() -> bool:
     if not isCliInstalled():
         return False
 
@@ -83,7 +83,7 @@ def isCliLatest():
     return False
 
 
-def extractVersion(text: str):
+def extractVersion(text: str) -> Optional[str]:
     """
     Used inside isCliLatest()
     :param text:
@@ -96,7 +96,7 @@ def extractVersion(text: str):
     return None
 
 
-def getLatestCliVersion():
+def getLatestCliVersion() -> Optional[str]:
     """
     Used inside isCliLatest()
     :return:
@@ -105,9 +105,11 @@ def getLatestCliVersion():
     if g.LATEST_CLI_VERSION:
         return g.LATEST_CLI_VERSION
 
-    configs, last_modified, last_version = None, None, None
+    configs: Optional[ConfigParser] = None
+    last_modified: Optional[str] = None
+    last_version: Optional[str] = None
     try:
-        configs: Optional[ConfigParser] = parseConfigFile(g.INTERNAL_CONFIG_FILE)
+        configs = parseConfigFile(g.INTERNAL_CONFIG_FILE)
         if configs:
             last_modified, last_version = lastModifiedAndVersion(configs)
     except:
@@ -122,13 +124,17 @@ def getLatestCliVersion():
             g.LATEST_CLI_VERSION = last_version
             return last_version
 
-        data = json.loads(contents.decode('utf-8'))
+        data = {}
+        if contents:
+            data = json.loads(contents.decode('utf-8'))
 
-        ver = data['tag_name']
+        ver: str = data['tag_name']
         log(LogLevel.DEBUG, f'Latest wakatime-cli version from GitHub: {ver}')
 
         if configs:
-            last_modified = headers.get('Last-Modified')
+            last_modified = ""
+            if headers:
+                last_modified = headers.get('Last-Modified')
             if not configs.has_section('internal'):
                 configs.add_section('internal')
             configs.set('internal', 'cli_version', ver)
@@ -143,7 +149,7 @@ def getLatestCliVersion():
         return None
 
 
-def lastModifiedAndVersion(configs) -> tuple[Optional[str], Optional[str]]:
+def lastModifiedAndVersion(configs: ConfigParser) -> tuple[Optional[str], Optional[str]]:
     """
     Used inside get LatestCliVersion()
     :param configs:

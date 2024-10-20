@@ -1,3 +1,6 @@
+"""
+Type annotations for Mypy
+"""
 from typing import TypedDict
 
 
