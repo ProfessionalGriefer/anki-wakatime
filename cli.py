@@ -143,7 +143,7 @@ def getLatestCliVersion():
         return None
 
 
-def lastModifiedAndVersion(configs) -> (Optional[str], Optional[str]):
+def lastModifiedAndVersion(configs) -> tuple[Optional[str], Optional[str]]:
     """
     Used inside get LatestCliVersion()
     :param configs:

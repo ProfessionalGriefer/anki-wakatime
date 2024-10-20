@@ -2,8 +2,9 @@ import os
 import platform
 from pathlib import Path
 from queue import Queue
+from typing import Optional
 
-from .types import HeartBeatType, LastHeartBeatType, SettingsType
+from .customTypes import HeartBeatType, LastHeartBeatType, SettingsType
 
 is_win = platform.system() == 'Windows'
 
@@ -33,7 +34,7 @@ LAST_HEARTBEAT_SENT_AT = 0
 LAST_FETCH_TODAY_CODING_TIME = 0
 FETCH_TODAY_DEBOUNCE_COUNTER = 0
 FETCH_TODAY_DEBOUNCE_SECONDS = 60
-LATEST_CLI_VERSION = None
+LATEST_CLI_VERSION: Optional[str] = None
 WAKATIME_CLI_LOCATION: Path = Path()
 HEARTBEATS: Queue[HeartBeatType] = Queue()
 

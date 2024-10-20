@@ -60,7 +60,7 @@ class Popen(subprocess.Popen):
         super(Popen, self).__init__(*args, **kwargs)
 
 
-def set_timeout(callback: Callable, seconds: int):
+def set_timeout(callback: Callable, seconds: int) -> None:
     """
     Executes the callback non-blockingly in a different thread.
     Runs the callback on an alternate thread in the original implementation for Sublime

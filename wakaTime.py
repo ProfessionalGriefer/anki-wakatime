@@ -16,6 +16,7 @@ import time
 from queue import Empty as QueueEmpty
 from subprocess import STDOUT, PIPE
 
+
 # Imports for Anki
 from anki.cards import Card
 from anki.collection import Collection
@@ -23,12 +24,15 @@ from aqt.qt import *
 from aqt.utils import showInfo
 from aqt import mw
 
-ankiConfig = mw.addonManager.getConfig(__name__)
+if mw is not None:
+    ankiConfig = mw.addonManager.getConfig(__name__) or {}
+else:
+    ankiConfig = {}
 
 from . import globals as g
 from .cli import isCliInstalled, getCliLocation
 from .helpers import LogLevel, log, Popen, obfuscate_apikey, set_timeout, enough_time_passed
-from .types import HeartBeatType, LastHeartBeatType
+from .customTypes import HeartBeatType
 
 
 class ApiDialogWidget(QInputDialog):
@@ -46,7 +50,7 @@ class ApiDialogWidget(QInputDialog):
         wakaKeyTemplate = "waka_XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
         key, ok = QInputDialog.getText(self, promptText, wakaKeyTemplate)
 
-        if ok and key:
+        if ok and key and mw:
             # Save the text to addon's config
             ankiConfig["wakaTime-api-key"] = key
             mw.addonManager.writeConfig(__name__, ankiConfig)
@@ -56,22 +60,25 @@ class ApiDialogWidget(QInputDialog):
 
             return key
 
+        else:
+            print("An error occurred while saving the API key")
+
         return ""
 
 
 class ApiKey(object):
-    _key = None
+    _key: str = ""
 
     def read(self) -> str:
         """
         :return: API key; empty if none have been found
         """
-        if self._key:
+        if self._key != "":
             return self._key
 
         # Read from the Anki Addon Config
         key: str = ankiConfig['wakaTime-api-key']
-        if key:
+        if key and key != "":
             self._key = key
             return self._key
 
@@ -79,9 +86,11 @@ class ApiKey(object):
         dialog = ApiDialogWidget()
         key = dialog.prompt()
 
-        if key:
+        if key and key != "":
             self._key = key
             return key
+
+        print("Empty key :(")
         return ""
 
 
@@ -90,9 +99,10 @@ APIKEY = ApiKey()
 
 def handle_activity(card: Card, is_write=False):
     # Get the first value of dict, hopefully that is the main question of the card
-    entity = next(iter(card.note().values()))
+    entity: str = next(iter(card.note().values()))
     timestamp: float = time.time()
     last_file: str = g.LAST_HEARTBEAT['file']
+    print(entity, timestamp, last_file)
     if entity != last_file or enough_time_passed(timestamp, is_write):
         col: Collection = card.col
         deck_id = card.did
@@ -112,7 +122,7 @@ def append_heartbeat(entity: str, timestamp: float, is_write: bool, project: str
     g.HEARTBEATS.put_nowait(heartbeat)
 
     # make this heartbeat the LAST_HEARTBEAT
-    g.LAST_HEARTBEAT: LastHeartBeatType = {
+    g.LAST_HEARTBEAT = {
         'time': timestamp,
         'file': entity,
         'is_write': is_write,
@@ -157,7 +167,7 @@ def build_heartbeat(
         timestamp,
         is_write,
         project,
-        lines_in_file: 0,
+        lines_in_file=0,
 ) -> HeartBeatType:
     """Returns a dict for passing to wakatime-cli as arguments."""
     heartbeat: HeartBeatType = {

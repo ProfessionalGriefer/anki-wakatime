@@ -1,8 +1,10 @@
 """
-Default Options for the wakatime-cli command
+Options for the wakatime-cli command
+Serves only as a reference, not used anywhere else
 """
+from typing import Any
 
-SETTINGS = {
+SETTINGS: dict[str, Any]  = {
     # Optional alternate language name. Auto-detected language takes priority.
     # "alternate-language": "Other",
 
