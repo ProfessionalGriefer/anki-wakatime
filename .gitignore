@@ -1,5 +1,6 @@
 # Custom ignores
 anki-wakatime.zip
+meta.json
 
 # -- Python .gitignore template -- #
 
