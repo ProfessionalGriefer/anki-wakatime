@@ -1,5 +1,7 @@
 # Anki Wakatime
 
+[![wakatime](https://wakatime.com/badge/github/ProfessionalGriefer/ankiWakatime.svg)](https://wakatime.com/badge/github/ProfessionalGriefer/ankiWakatime)
+
 A time tracking extension for Anki.
 Perfect for other programmers who already use WakaTime.
 
